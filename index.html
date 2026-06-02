@@ -353,6 +353,12 @@ DECK.chapters.forEach(c=>{
 $('#totalCards').textContent = (MC.length+TYPE.length);
 const chTitle = {}; DECK.chapters.forEach(c=>chTitle[c.chapter]=c.title);
 
+/* ---- session/config state (declared early: auto-unlock can fire before later code) ---- */
+let selectedCh = new Set(DECK.chapters.map(c=>c.chapter));
+let mode = 'mc';
+let countSel = 25; // number or 'all'
+let session = null;
+
 /* ---- USER / PROFILE system ---- */
 const UKEY='vmt_users', CKEY='vmt_current';
 function users(){return LS.get(UKEY,[]);}
@@ -428,12 +434,6 @@ function enterApp(){
   show('home'); buildHome(); updatePool();
 }
 
-/* ---- state ---- */
-let selectedCh = new Set(DECK.chapters.map(c=>c.chapter));
-let mode = 'mc';
-let countSel = 25; // number or 'all'
-let session = null;
-
 /* ---- chapter chips ---- */
 function buildHome(){
   const chipWrap = $('#chapterChips');
@@ -452,8 +452,26 @@ function buildHome(){
   [10,25,50,100,'All'].forEach(v=>{
     const b=document.createElement('button'); b.className='chip'+((v===25)?' on':''); b.dataset.count=v;
     b.textContent = v==='All'?'All':(''+v);
-    b.onclick=()=>{$$('#countChips .chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');countSel=(v==='All')?'all':v;updatePool();};
+    b.onclick=()=>{ countSel=(v==='All')?'all':v; updatePool(); };
     cc.appendChild(b);
+  });
+}
+// Adapt the count options to how many questions the current selection actually has
+function syncCountChips(n){
+  const chips=$$('#countChips .chip[data-count]');
+  // hide fixed sizes larger than what's available; label All with the real total
+  chips.forEach(b=>{
+    const v=b.dataset.count;
+    if(v==='All'){ b.textContent = n? `All (${n})` : 'All'; b.style.display=''; return; }
+    b.style.display = (+v <= n) ? '' : 'none';
+  });
+  // if the chosen number no longer fits the (non-empty) pool, fall back to All
+  if(n>0 && countSel!=='all' && countSel>n) countSel='all';
+  // reflect the active selection
+  chips.forEach(b=>{
+    const v=b.dataset.count;
+    const on = (v==='All') ? (countSel==='all') : (+v===countSel);
+    b.classList.toggle('on', on);
   });
 }
 $('#allCh').onclick=()=>{selectedCh=new Set(DECK.chapters.map(c=>c.chapter));$$('#chapterChips .chip[data-ch]').forEach(b=>b.classList.add('on'));updatePool();};
@@ -472,7 +490,9 @@ function poolFor(){
 }
 function sessionSize(n){return countSel==='all'?n:Math.min(n,countSel);}
 function updatePool(){
-  const n=poolFor().length; const k=sessionSize(n);
+  const n=poolFor().length;
+  syncCountChips(n);
+  const k=sessionSize(n);
   $('#poolInfo').textContent = n? `${k} question${k!==1?'s':''} queued${$('#optMissed').checked?' (missed only)':''}.` : 'No questions match — pick a chapter or uncheck "missed only".';
   $('#startBtn').disabled = n===0;
 }
